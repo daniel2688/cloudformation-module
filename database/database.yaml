@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RDS Deploy in AWS"
+
+Parameters:
+  DBMotorParameter:
+    Description: "Motor para la DB"
+    Type: String
+    AllowedValues:
+      - "mysql"
+      - "postgres"
+      - "mariadb"
+      - "aurora"
+      - "aurora-mysql"
+      - "aurora-postgresql"
+    Default: "mysql"
+
+  DBInstanceNameParameter:
+    Description: "Nombre para la instancia de BD"
+    Type: String
+
+  DBInstanceTypeParameter:
+    Description: "Tipo de instancia para la BD"
+    Type: String
+    AllowedValues:
+      - "db.t3.small"
+      - "db.t3.large"
+      - "db.t3.xlarge"
+    Default: "db.t3.small"
+  
+  DBTagsParameter:
+    Description: "Tags para la instancia de BD"
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Default: dev
+
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet::Id
+    Description: "ID de la tercera subred privada"
+
+  PrivateSubnet4:
+    Type: AWS::EC2::Subnet::Id
+    Description: "ID de la cuarta subred privada"
+
+  SecretManagerDBArn:
+    Description: "ARN del secreto almacenado en AWS Secrets Manager"
+    Type: String
+
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID del Security Group del backend"
+
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: "ID del VPC donde se despliega la BD"
+
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subredes privadas para RDS Multi-AZ"
+      SubnetIds:
+        - !Ref PrivateSubnet3
+        - !Ref PrivateSubnet4
+
+  RDSDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for RDS"
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref BackendSecurityGroup
+
+  RDSDeployTest:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref DBInstanceNameParameter
+      DBInstanceClass: !Ref DBInstanceTypeParameter
+      AllocatedStorage: "20"
+      Engine: !Ref DBMotorParameter
+      MultiAZ: true
+      MasterUsername: !Sub "{{resolve:secretsmanager:${SecretManagerDBArn}:SecretString:username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${SecretManagerDBArn}:SecretString:password}}"
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSDBSecurityGroup
+      Tags:
+        - Key: "Description"
+          Value: !Ref DBTagsParameter
+
+Outputs:
+  DBInstanceIdentifier:
+    Description: "ID de la instancia de RDS"
+    Value: !Ref RDSDeployTest

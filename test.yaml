@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Compute Resources for Tier 3 Application"
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: "Nombre del entorno del proyecto"
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: "Nombre de EC2 KeyPair existente en la cuenta"
+  InstanceType:
+    Type: String
+    Description: "Tipo de instancia EC2"
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnet4:
+    Type: AWS::EC2::Subnet::Id
+  FrontendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  FrontendInstanceId:
+    Type: String
+    Description: "ID de la instancia EC2 para el frontend (p.ej. i-1234567890abcdef0)"
+    AllowedPattern: "^i-[0-9a-f]{8,17}$"
+    ConstraintDescription: "El ID de la instancia EC2 debe comenzar con 'i-' seguido de 8 a 17 caracteres hexadecimales."
+
+Resources:
+  FrontendLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref FrontendSecurityGroup
+      ImageId: ami-06c68f701d8090592  # Reemplaza con la AMI adecuada
+
+  BackendLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref BackendSecurityGroup
+      ImageId: ami-06c68f701d8090592  # Reemplaza con la AMI adecuada
+
+  FrontendAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      LaunchConfigurationName: !Ref FrontendLaunchConfig
+      MinSize: 2
+      MaxSize: 4
+      DesiredCapacity: 2
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-ec2-public-instance-${AWS::StackName}"
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: !Ref EnvironmentName
+          PropagateAtLaunch: true
+
+  BackendAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+        - !Ref PrivateSubnet4
+      LaunchConfigurationName: !Ref BackendLaunchConfig
+      MinSize: 2
+      MaxSize: 4
+      DesiredCapacity: 2
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-ec2-private-instance-${AWS::StackName}"
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: !Ref EnvironmentName
+          PropagateAtLaunch: true
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${EnvironmentName}-ALB"
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref FrontendSecurityGroup
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPCId
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: 80
+      HealthCheckPath: /
+      Targets:
+        - Id: !Ref FrontendInstanceId
+          Port: 80
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+Outputs:
+  FrontendAutoScalingGroup:
+    Value: !Ref FrontendAutoScalingGroup
+  BackendAutoScalingGroup:
+    Value: !Ref BackendAutoScalingGroup
+  ALBDNSName:
+    Value: !GetAtt ALB.DNSName
+  ALBTargetGroup:
+    Value: !Ref ALBTargetGroup

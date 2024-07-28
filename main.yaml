@@ -1,0 +1,257 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Main Stack for Tier 3 Application in AWS"
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: "Nombre del entorno del proyecto"
+    AllowedValues:
+      - dev
+      - prod
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: "Nombre de EC2 KeyPair existente en la cuenta"
+
+  InstanceType:
+    Type: String
+    Description: "Tipo de instancia EC2"
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+      - t3.small
+      - t3.medium
+
+  VpcCidr:
+    Type: String
+    Description: "Bloque CIDR para la red VPC"
+    Default: "10.0.0.0/16"
+
+  PublicSubnet1Cidr:
+    Type: String
+    Description: "Bloque CIDR para la primera subred publica"
+    Default: "10.0.1.0/24"
+
+  PublicSubnet2Cidr:
+    Type: String
+    Description: "Bloque CIDR para la segunda subred publica"
+    Default: "10.0.2.0/24"
+
+  PrivateSubnet1Cidr:
+    Type: String
+    Description: "Bloque CIDR para la primera subred privada"
+    Default: "10.0.3.0/24"
+
+  PrivateSubnet2Cidr:
+    Type: String
+    Description: "Bloque CIDR para la segunda subred privada"
+    Default: "10.0.4.0/24"
+
+  PrivateSubnet3Cidr:
+    Type: String
+    Description: "Bloque CIDR para la tercera subred privada"
+    Default: "10.0.5.0/24"
+
+  PrivateSubnet4Cidr:
+    Type: String
+    Description: "Bloque CIDR para la cuarta subred privada"
+    Default: "10.0.6.0/24"
+
+  AvailabilityZone1:
+    Type: String
+    Description: "La primera zona de disponibilidad"
+    Default: "us-east-1a"
+
+  AvailabilityZone2:
+    Type: String
+    Description: "La segunda zona de disponibilidad"
+    Default: "us-east-1b"
+
+  DBMotorParameter:
+    Type: String
+    Description: "Motor para la DB"
+    AllowedValues:
+      - "mysql"
+      - "postgres"
+      - "mariadb"
+      - "aurora"
+      - "aurora-mysql"
+      - "aurora-postgresql"
+    Default: "mysql"
+
+  DBInstanceNameParameter:
+    Type: String
+    Description: "Nombre para la instancia de BD"
+
+  DBInstanceTypeParameter:
+    Type: String
+    Description: "Tipo de instancia para la BD"
+    AllowedValues:
+      - "db.t3.small"
+      - "db.t3.large"
+      - "db.t3.xlarge"
+    Default: "db.t3.small"
+  
+  DBTagsParameter:
+    Type: String
+    Description: "Tags para la instancia de BD"
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Default: dev
+
+  DBDescriptionParameter:
+    Type: String
+    Description: "Descripcion del secreto"
+    Default: "Secret for RDS"
+
+  DBNameParameter:
+    Type: String
+    Description: "Nombre del secreto"
+    Default: "mysecret"
+
+  DBPasswordParameter:
+    Type: String
+    Description: "Contraseña del usuario maestro de la base de datos"
+    NoEcho: true
+
+  DBUserParameter:
+    Type: String
+    Description: "Nombre de usuario del usuario maestro de la base de datos"
+    Default: "admin"
+
+  TagsParameter:
+    Type: String
+    Description: "Etiquetas para asociar el secreto a un proyecto"
+    AllowedValues:
+      - prd
+      - test
+      - dev
+    Default: "prd"
+
+  CacheNodeType:
+    Type: String
+    Description: "Tipo de nodo para ElastiCache"
+    Default: cache.t3.micro
+    AllowedValues:
+      - cache.t3.micro
+      - cache.t3.small
+      - cache.t3.medium
+
+  CacheEngine:
+    Type: String
+    Description: "Motor de ElastiCache"
+    Default: redis
+    AllowedValues:
+      - redis
+      - memcached
+
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: "ID de la AMI para las instancias EC2"
+
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://s3.amazonaws.com/my-cloudformation-templates-test/network/network.yaml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VpcCidr: !Ref VpcCidr
+        PublicSubnet1Cidr: !Ref PublicSubnet1Cidr
+        PublicSubnet2Cidr: !Ref PublicSubnet2Cidr
+        PrivateSubnet1Cidr: !Ref PrivateSubnet1Cidr
+        PrivateSubnet2Cidr: !Ref PrivateSubnet2Cidr
+        PrivateSubnet3Cidr: !Ref PrivateSubnet3Cidr
+        PrivateSubnet4Cidr: !Ref PrivateSubnet4Cidr
+        AvailabilityZone1: !Ref AvailabilityZone1
+        AvailabilityZone2: !Ref AvailabilityZone2
+
+  SecurityStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://s3.amazonaws.com/my-cloudformation-templates-test/security/security.yaml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VPCId: !GetAtt NetworkStack.Outputs.VPCId
+
+  ComputeStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://s3.amazonaws.com/my-cloudformation-templates-test/compute/compute.yaml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        KeyName: !Ref KeyName
+        InstanceType: !Ref InstanceType
+        VPCId: !GetAtt NetworkStack.Outputs.VPCId
+        PublicSubnet1: !GetAtt NetworkStack.Outputs.PublicSubnet1
+        PublicSubnet2: !GetAtt NetworkStack.Outputs.PublicSubnet2
+        PrivateSubnet1: !GetAtt NetworkStack.Outputs.PrivateSubnet1
+        PrivateSubnet2: !GetAtt NetworkStack.Outputs.PrivateSubnet2
+        PrivateSubnet3: !GetAtt NetworkStack.Outputs.PrivateSubnet3
+        PrivateSubnet4: !GetAtt NetworkStack.Outputs.PrivateSubnet4
+        FrontendSecurityGroup: !GetAtt SecurityStack.Outputs.FrontendSecurityGroup
+        BackendSecurityGroup: !GetAtt SecurityStack.Outputs.BackendSecurityGroup
+        AmiId: !Ref AmiId
+
+  SecretStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://s3.amazonaws.com/my-cloudformation-templates-test/secret/secret.yaml"
+      Parameters:
+        DBDescriptionParameter: !Ref DBDescriptionParameter
+        DBNameParameter: !Ref DBNameParameter
+        DBPasswordParameter: !Ref DBPasswordParameter
+        DBUserParameter: !Ref DBUserParameter
+        TagsParameter: !Ref TagsParameter
+
+  DatabaseStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://s3.amazonaws.com/my-cloudformation-templates-test/database/database.yaml"
+      Parameters:
+        DBMotorParameter: !Ref DBMotorParameter
+        DBInstanceNameParameter: !Ref DBInstanceNameParameter
+        DBInstanceTypeParameter: !Ref DBInstanceTypeParameter
+        DBTagsParameter: !Ref DBTagsParameter
+        PrivateSubnet3: !GetAtt NetworkStack.Outputs.PrivateSubnet3
+        PrivateSubnet4: !GetAtt NetworkStack.Outputs.PrivateSubnet4
+        SecretManagerDBArn: !GetAtt SecretStack.Outputs.SecretManagerDBArn
+        VPCId: !GetAtt NetworkStack.Outputs.VPCId
+        BackendSecurityGroup: !GetAtt SecurityStack.Outputs.BackendSecurityGroup
+
+  ElastiCacheStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://s3.amazonaws.com/my-cloudformation-templates-test/elasticache/elasticache.yaml"
+      Parameters:
+        CacheNodeType: !Ref CacheNodeType
+        CacheEngine: !Ref CacheEngine
+        PrivateSubnet3: !GetAtt NetworkStack.Outputs.PrivateSubnet3
+        PrivateSubnet4: !GetAtt NetworkStack.Outputs.PrivateSubnet4
+
+Outputs:
+  VPCId:
+    Value: !GetAtt NetworkStack.Outputs.VPCId
+  PublicSubnet1:
+    Value: !GetAtt NetworkStack.Outputs.PublicSubnet1
+  PublicSubnet2:
+    Value: !GetAtt NetworkStack.Outputs.PublicSubnet2
+  PrivateSubnet1:
+    Value: !GetAtt NetworkStack.Outputs.PrivateSubnet1
+  PrivateSubnet2:
+    Value: !GetAtt NetworkStack.Outputs.PrivateSubnet2
+  PrivateSubnet3:
+    Value: !GetAtt NetworkStack.Outputs.PrivateSubnet3
+  PrivateSubnet4:
+    Value: !GetAtt NetworkStack.Outputs.PrivateSubnet4
+  ALBDNSName:
+    Value: !GetAtt ComputeStack.Outputs.ALBDNSName
+  DBInstanceIdentifier:
+    Value: !GetAtt DatabaseStack.Outputs.DBInstanceIdentifier
+  SecretManagerDBArn:
+    Value: !GetAtt SecretStack.Outputs.SecretManagerDBArn
+  ElastiCacheClusterID:
+    Value: !GetAtt ElastiCacheStack.Outputs.ElastiCacheClusterID
